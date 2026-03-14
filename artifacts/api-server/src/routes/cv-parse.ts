@@ -29,17 +29,15 @@ async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
     baseURL = "https://openrouter.ai/api/v1";
   }
 
-  const client = new OpenAI({
-    apiKey,
-    baseURL,
-  });
+  // Fallback chain of free models
+  const models = [
+    "openrouter/free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "arcee-ai/trinity-mini:free",
+    "liquid/lfm-2.5-1.2b-instruct:free",
+  ];
 
-  const completion = await client.chat.completions.create({
-    model: "meta-llama/llama-3.3-70b-instruct:free",
-    messages: [
-      {
-        role: "system",
-        content: `You are a CV parser. Extract structured data from CVs and return ONLY valid JSON with these fields:
+  const systemPrompt = `You are a CV parser. Extract structured data from CVs and return ONLY valid JSON with these fields:
 {
   "firstName": string,
   "lastName": string,
@@ -48,18 +46,49 @@ async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
   "skills": string (comma-separated skill list),
   "expectedSalary": number or null
 }
-Return only the JSON object, no markdown or extra text.`,
-      },
-      {
-        role: "user",
-        content: `Parse this CV:\n\n${cvText.slice(0, 4000)}`,
-      },
-    ],
-    temperature: 0.1,
-  });
+Return only the JSON object, no markdown or extra text.`;
 
-  const raw = completion.choices[0]?.message?.content ?? "{}";
-  return JSON.parse(raw);
+  let lastError: Error | null = null;
+
+  for (const model of models) {
+    try {
+      const client = new OpenAI({
+        apiKey,
+        baseURL,
+      });
+
+      const completion = await client.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: `Parse this CV:\n\n${cvText.slice(0, 4000)}`,
+          },
+        ],
+        temperature: 0.1,
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      console.log(`[CV Parse] Successfully parsed with model: ${model}`);
+      return JSON.parse(raw);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const errorMsg = lastError.message;
+      console.warn(`[CV Parse] Model ${model} failed: ${errorMsg}. Trying next...`);
+
+      // If it's a rate limit, wait a bit before trying next model
+      if (errorMsg.includes("rate") || errorMsg.includes("429")) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
+
+  // If all models failed, throw the last error
+  throw lastError || new Error("All CV parsing models failed");
 }
 
 /**
