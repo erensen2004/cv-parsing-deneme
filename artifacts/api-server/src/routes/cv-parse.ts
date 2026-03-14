@@ -17,14 +17,21 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 }
 
 async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
-  const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("AI service not configured");
   }
 
+  let baseURL: string | undefined;
+  if (process.env.REPLIT_AI_TOKEN) {
+    baseURL = "https://ai.replit.com";
+  } else if (process.env.OPENROUTER_API_KEY) {
+    baseURL = "https://openrouter.ai/api/v1";
+  }
+
   const client = new OpenAI({
     apiKey,
-    baseURL: process.env.REPLIT_AI_TOKEN ? "https://ai.replit.com" : undefined,
+    baseURL,
   });
 
   const completion = await client.chat.completions.create({
@@ -66,7 +73,7 @@ Return only the JSON object, no markdown or extra text.`,
  */
 router.post("/", requireAuth, requireRole("vendor"), async (req: Request, res: Response) => {
   try {
-    const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       Errors.serviceUnavailable(res, "AI service not configured");
       return;
