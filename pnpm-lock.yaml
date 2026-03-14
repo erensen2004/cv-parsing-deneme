@@ -156,6 +156,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      pdf-parse:
+        specifier: ^2.4.5
+        version: 2.4.5
     devDependencies:
       prettier:
         specifier: ^3.8.1

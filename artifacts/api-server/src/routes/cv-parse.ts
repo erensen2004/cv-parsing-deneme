@@ -7,13 +7,35 @@ import { CvParseBodySchema, CvParseResponseSchema } from "../lib/schemas.js";
 import { Errors } from "../lib/errors.js";
 
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+let pdfParse: any;
+try {
+  const pdfParseModule = require("pdf-parse");
+  pdfParse = typeof pdfParseModule === "function" ? pdfParseModule : pdfParseModule.default;
+} catch (e) {
+  console.warn("[Init] pdf-parse module not available");
+}
 
 const router = Router();
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const data = await pdfParse(buffer);
-  return data.text;
+  if (!pdfParse || typeof pdfParse !== "function") {
+    throw new Error("PDF parsing not available. Please use text input instead.");
+  }
+  
+  try {
+    console.log(`[PDF Parse] Extracting text from PDF (${buffer.length} bytes)...`);
+    const data = await pdfParse(buffer);
+    const text = (data?.text || "").trim();
+    console.log(`[PDF Parse] Successfully extracted ${text.length} characters`);
+    if (!text) {
+      throw new Error("PDF contains no readable text");
+    }
+    return text;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[PDF Parse] Extraction failed: ${errorMsg}`);
+    throw new Error(`PDF parsing failed - please use text input. Error: ${errorMsg}`);
+  }
 }
 
 async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
@@ -126,8 +148,10 @@ router.post("/", requireAuth, requireRole("vendor"), async (req: Request, res: R
 
       try {
         cvText = await extractTextFromPdf(pdfBuffer);
-      } catch {
-        Errors.badRequest(res, "Failed to extract text from PDF");
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[CV Parse] PDF extraction error: ${errorMsg}`);
+        Errors.badRequest(res, `Failed to extract text from PDF: ${errorMsg}`);
         return;
       }
     } else {
