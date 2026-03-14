@@ -35,7 +35,7 @@ async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
   });
 
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
     messages: [
       {
         role: "system",
