@@ -7,34 +7,31 @@ import { CvParseBodySchema, CvParseResponseSchema } from "../lib/schemas.js";
 import { Errors } from "../lib/errors.js";
 
 const require = createRequire(import.meta.url);
-let pdfParse: any;
-try {
-  const pdfParseModule = require("pdf-parse");
-  pdfParse = typeof pdfParseModule === "function" ? pdfParseModule : pdfParseModule.default;
-} catch (e) {
-  console.warn("[Init] pdf-parse module not available");
-}
 
 const router = Router();
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  if (!pdfParse || typeof pdfParse !== "function") {
-    throw new Error("PDF parsing not available. Please use text input instead.");
-  }
-  
   try {
+    // Import pdf-parse dynamically with correct export handling
+    const pdfParseModule = require("pdf-parse");
+    const pdfParse = pdfParseModule?.default || pdfParseModule;
+    
+    if (typeof pdfParse !== "function") {
+      throw new Error(`pdf-parse is not a function: ${typeof pdfParse}`);
+    }
+    
     console.log(`[PDF Parse] Extracting text from PDF (${buffer.length} bytes)...`);
     const data = await pdfParse(buffer);
     const text = (data?.text || "").trim();
-    console.log(`[PDF Parse] Successfully extracted ${text.length} characters`);
+    console.log(`[PDF Parse] Successfully extracted ${text.length} characters from PDF`);
     if (!text) {
       throw new Error("PDF contains no readable text");
     }
     return text;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[PDF Parse] Extraction failed: ${errorMsg}`);
-    throw new Error(`PDF parsing failed - please use text input. Error: ${errorMsg}`);
+    console.error(`[PDF Parse] Extraction error: ${errorMsg}`);
+    throw new Error(`PDF extraction failed: ${errorMsg}`);
   }
 }
 
